@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0f1c">
+  <title>语音转文字 · 实时滚动字幕 · 翻译</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      height: 100%;
+      background: #0b0f1c;
+    }
+
+    body {
+      min-height: 100dvh;
+      background: linear-gradient(145deg, #0b0f1c 0%, #1a1f33 100%);
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 12px;
+      padding-bottom: calc(12px + env(safe-area-inset-bottom));
+      padding-top: calc(12px + env(safe-area-inset-top));
+    }
+
+    .app-container {
+      width: 100%;
+      max-width: 900px;
+      background: rgba(22, 28, 46, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-radius: 1.6rem;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 25px 50px -8px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+      padding: clamp(16px, 4vw, 28px);
+      display: flex;
+      flex-direction: column;
+    }
+
+    h1 {
+      font-size: clamp(1.2rem, 5vw, 1.7rem);
+      font-weight: 500;
+      letter-spacing: -0.02em;
+      color: #f0f3ff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: clamp(12px, 3vw, 18px);
+      padding-left: 4px;
+      flex-wrap: wrap;
+    }
+
+    h1 .title-text {
+      background: linear-gradient(135deg, #b7c9ff, #7f9cf5);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      font-weight: 600;
+    }
+
+    .live-badge {
+      display: inline-flex;
+      align-items: center;
+      background: rgba(255, 80, 120, 0.15);
+      border: 1px solid rgba(255, 100, 130, 0.4);
+      border-radius: 40px;
+      padding: 4px 12px 4px 10px;
+      font-size: 0.7rem;
+      font-weight: 500;
+      color: #ff98b0;
+      gap: 6px;
+      margin-left: auto;
+      letter-spacing: 0.3px;
+      backdrop-filter: blur(4px);
+    }
+
+    .live-badge .dot {
+      width: 8px;
+      height: 8px;
+      background: #ff4d6d;
+      border-radius: 50%;
+      box-shadow: 0 0 12px #ff4d6d;
+      animation: pulse 1.8s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.85); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+
+    /* 字幕滚动区域 — 移动端高度自适应 */
+    .transcript-panel {
+      background: #0c101e;
+      border-radius: 1.4rem;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      box-shadow: inset 0 4px 18px rgba(0, 0, 0, 0.7), 0 8px 18px -6px black;
+      padding: 4px;
+      margin-bottom: 14px;
+      flex: 1;
+      min-height: 0;
+      display: flex;
+    }
+
+    .scroll-box {
+      width: 100%;
+      min-height: 200px;
+      height: clamp(220px, 38vh, 320px);
+      overflow-y: auto;
+      padding: clamp(12px, 3vw, 18px);
+      scroll-behavior: smooth;
+      border-radius: 1.2rem;
+      background: radial-gradient(circle at 20% 30%, #131a2c, #0a0e18);
+      scrollbar-width: thin;
+      scrollbar-color: #4a567a #1a1f30;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .scroll-box::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    .scroll-box::-webkit-scrollbar-track {
+      background: #1a1f30;
+      border-radius: 12px;
+    }
+
+    .scroll-box::-webkit-scrollbar-thumb {
+      background: #4a567a;
+      border-radius: 12px;
+    }
+
+    .caption-item {
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 16px;
+      animation: fadeSlide 0.3s ease-out;
+    }
+
+    @keyframes fadeSlide {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .original-line {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      font-size: clamp(1rem, 4vw, 1.15rem);
+      line-height: 1.5;
+      color: #eef3ff;
+      font-weight: 450;
+      word-break: break-word;
+    }
+
+    .original-line .speaker-icon {
+      font-size: 0.95rem;
+      opacity: 0.6;
+      color: #9bb1ff;
+      flex-shrink: 0;
+      user-select: none;
+      margin-top: 2px;
+    }
+
+    .original-text {
+      flex: 1;
+      text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+    }
+
+    .translated-line {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-top: 5px;
+      padding-left: 16px;
+      font-size: clamp(0.85rem, 3.4vw, 0.95rem);
+      line-height: 1.45;
+      color: #a3b8ff;
+      font-weight: 380;
+      word-break: break-word;
+      border-left: 2px solid #2f3d66;
+      margin-left: 6px;
+    }
+
+    .translated-line .globe-icon {
+      font-size: 0.85rem;
+      opacity: 0.7;
+      flex-shrink: 0;
+      user-select: none;
+    }
+
+    .translated-text {
+      flex: 1;
+      color: #b7cbff;
+      font-style: italic;
+    }
+
+    .placeholder-message {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #5c6d92;
+      font-size: 0.9rem;
+      gap: 10px;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .placeholder-message .icon {
+      font-size: 2rem;
+      opacity: 0.3;
+    }
+
+    /* 控制栏 — 移动端自动换行 */
+    .control-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .btn {
+      background: #262f47;
+      border: 1px solid #3f4b6e;
+      color: #e0e7ff;
+      padding: 10px 16px;
+      border-radius: 44px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+      flex: 0 0 auto;
+      touch-action: manipulation;
+    }
+
+    .btn:hover:not(:disabled) {
+      background: #2f3a58;
+      border-color: #5f72a3;
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    .btn:active:not(:disabled) {
+      transform: translateY(1px);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+    }
+
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      filter: grayscale(0.5);
+      box-shadow: none;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #3b4b7a, #25345c);
+      border-color: #5a6fa0;
+      color: white;
+      font-weight: 500;
+      box-shadow: 0 6px 14px rgba(45, 70, 140, 0.3);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: linear-gradient(135deg, #4b5f94, #2e3f6e);
+      border-color: #7a90c7;
+    }
+
+    .btn-danger {
+      background: rgba(180, 60, 80, 0.2);
+      border-color: #a0455a;
+      color: #ffb7c5;
+    }
+
+    .btn-danger:hover:not(:disabled) {
+      background: rgba(200, 70, 90, 0.35);
+      border-color: #c25b73;
+    }
+
+    .status-indicator {
+      margin-left: auto;
+      font-size: 0.78rem;
+      color: #8f9fc9;
+      background: #1a2137;
+      padding: 8px 14px;
+      border-radius: 40px;
+      border: 1px solid #2b3555;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+
+    .status-indicator .rec-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #5f6f99;
+      transition: all 0.2s;
+    }
+
+    .status-indicator.active .rec-dot {
+      background: #ff4d6d;
+      box-shadow: 0 0 14px #ff4d6d;
+      animation: pulse 1.6s infinite;
+    }
+
+    .status-indicator.active {
+      color: #ffb7c5;
+      border-color: #6e3f52;
+    }
+
+    .translate-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #1b2238;
+      border: 1px solid #2e3b5c;
+      border-radius: 40px;
+      padding: 8px 14px;
+      font-size: 0.82rem;
+      color: #b7c7f0;
+      cursor: pointer;
+      user-select: none;
+      transition: 0.15s;
+    }
+
+    .translate-toggle input[type="checkbox"] {
+      accent-color: #6a8aff;
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+
+    .lang-selector {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: #1b2238;
+      border-radius: 40px;
+      padding: 6px 12px;
+      border: 1px solid #2e3b5c;
+      font-size: 0.82rem;
+    }
+
+    .lang-selector select {
+      background: transparent;
+      border: none;
+      color: #d0dcff;
+      font-size: 0.82rem;
+      padding: 4px 2px;
+      outline: none;
+      cursor: pointer;
+      -webkit-appearance: none;
+    }
+
+    .lang-selector select option {
+      background: #1b2238;
+      color: #eef3ff;
+    }
+
+    .footer-note {
+      font-size: 0.68rem;
+      color: #5e6b8b;
+      text-align: right;
+      margin-top: 10px;
+      padding-right: 4px;
+      letter-spacing: 0.2px;
+    }
+
+    .footer-note kbd {
+      background: #232b42;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 0.65rem;
+      border: 1px solid #3e4a6b;
+      color: #b0c0e8;
+    }
+
+    /* 手机端微调 */
+    @media (max-width: 480px) {
+      .app-container {
+        border-radius: 1.2rem;
+      }
+      .btn {
+        padding: 10px 14px;
+        font-size: 0.8rem;
+      }
+      .translate-toggle {
+        padding: 7px 12px;
+        font-size: 0.78rem;
+      }
+      .lang-selector {
+        padding: 5px 10px;
+      }
+      .status-indicator {
+        font-size: 0.72rem;
+        padding: 7px 12px;
+      }
+      .control-bar {
+        gap: 6px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-container">
+  <h1>
+    <span class="title-text">🎙️ 语音转文字</span>
+    <div class="live-badge">
+      <span class="dot"></span> LIVE
+    </div>
+  </h1>
+
+  <div class="transcript-panel">
+    <div class="scroll-box" id="scrollBox">
+      <div class="placeholder-message" id="placeholderMsg">
+        <div class="icon">🎤</div>
+        <div>点击下方「开始聆听」按钮，开始语音转写</div>
+        <div style="font-size: 0.78rem; opacity: 0.6;">实时字幕滚动显示 · 支持翻译</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="control-bar">
+    <button class="btn btn-primary" id="startBtn">
+      <span>🎤</span> 开始聆听
+    </button>
+    <button class="btn btn-danger" id="stopBtn" disabled>
+      <span>⏹️</span> 停止
+    </button>
+
+    <div class="translate-toggle">
+      <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+        <input type="checkbox" id="translateCheckbox" checked> 翻译
+      </label>
+    </div>
+    <div class="lang-selector">
+      <span>🌐</span>
+      <select id="targetLang" aria-label="翻译目标语言">
+        <option value="zh" selected>中文</option>
+        <option value="en">English</option>
+        <option value="ja">日本語</option>
+        <option value="ko">한국어</option>
+        <option value="es">Español</option>
+        <option value="fr">Français</option>
+      </select>
+    </div>
+
+    <div class="status-indicator" id="statusIndicator">
+      <span class="rec-dot"></span>
+      <span id="statusText">待命</span>
+    </div>
+  </div>
+  <div class="footer-note">
+    <kbd>实时</kbd> 语音识别 · 译文自动生成
+  </div>
+</div>
+
+<script>
+  (function() {
+    const scrollBox = document.getElementById('scrollBox');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const statusIndicator = document.getElementById('statusIndicator');
+    const statusText = document.getElementById('statusText');
+    const translateCheckbox = document.getElementById('translateCheckbox');
+    const targetLangSelect = document.getElementById('targetLang');
+
+    let recognition = null;
+    let isListening = false;
+    let shouldTranslate = true;
+    let targetLang = 'zh';
+    // 防止 onend 无限重连
+    let manualStop = false;
+
+    translateCheckbox.addEventListener('change', (e) => {
+      shouldTranslate = e.target.checked;
+    });
+
+    targetLangSelect.addEventListener('change', (e) => {
+      targetLang = e.target.value;
+    });
+
+    function addCaptionItemSafe(originalText, translatedText = null) {
+      const placeholder = scrollBox.querySelector('.placeholder-message');
+      if (placeholder) placeholder.remove();
+
+      const item = document.createElement('div');
+      item.className = 'caption-item';
+
+      const originalLine = document.createElement('div');
+      originalLine.className = 'original-line';
+      const speakerIcon = document.createElement('span');
+      speakerIcon.className = 'speaker-icon';
+      speakerIcon.textContent = '🗣️';
+      const originalTextSpan = document.createElement('span');
+      originalTextSpan.className = 'original-text';
+      originalTextSpan.textContent = originalText;
+      originalLine.appendChild(speakerIcon);
+      originalLine.appendChild(originalTextSpan);
+      item.appendChild(originalLine);
+
+      if (translatedText && translatedText.trim() !== '') {
+        const translatedLine = document.createElement('div');
+        translatedLine.className = 'translated-line';
+        const globeIcon = document.createElement('span');
+        globeIcon.className = 'globe-icon';
+        globeIcon.textContent = '🌐';
+        const translatedTextSpan = document.createElement('span');
+        translatedTextSpan.className = 'translated-text';
+        translatedTextSpan.textContent = translatedText;
+        translatedLine.appendChild(globeIcon);
+        translatedLine.appendChild(translatedTextSpan);
+        item.appendChild(translatedLine);
+      }
+
+      scrollBox.appendChild(item);
+      // 移动端平滑滚动
+      scrollBox.scrollTo({ top: scrollBox.scrollHeight, behavior: 'smooth' });
+    }
+
+    function setStatus(text, isActive) {
+      statusText.textContent = text;
+      statusIndicator.classList.toggle('active', isActive);
+    }
+
+    // 演示翻译：真实场景请接入翻译 API
+    function mockTranslate(text, lang) {
+      if (!text || text.trim() === '') return '';
+      const lowerText = text.toLowerCase().trim();
+
+      if (lang === 'en') {
+        if (lowerText.includes('你好') || lowerText.includes('您好')) return 'Hello';
+        if (lowerText.includes('谢谢')) return 'Thank you';
+        if (lowerText.includes('再见')) return 'Goodbye';
+        return `[EN] ${text}`;
+      }
+      if (lang === 'zh') {
+        if (/^[a-zA-Z\s,.!?]+$/.test(text)) {
+          if (lowerText.includes('hello')) return '你好';
+          if (lowerText.includes('thank')) return '谢谢';
+          return `[中文] ${text}`;
+        }
+        return text;
+      }
+      if (lang === 'ja') {
+        if (lowerText.includes('你好')) return 'こんにちは';
+        if (lowerText.includes('谢谢')) return 'ありがとう';
+        return `[日本語] ${text}`;
+      }
+      if (lang === 'ko') {
+        if (lowerText.includes('你好')) return '안녕하세요';
+        if (lowerText.includes('谢谢')) return '감사합니다';
+        return `[한국어] ${text}`;
+      }
+      if (lang === 'es') {
+        if (lowerText.includes('你好')) return 'Hola';
+        if (lowerText.includes('谢谢')) return 'Gracias';
+        return `[Español] ${text}`;
+      }
+      if (lang === 'fr') {
+        if (lowerText.includes('你好')) return 'Bonjour';
+        if (lowerText.includes('谢谢')) return 'Merci';
+        return `[Français] ${text}`;
+      }
+      return `[${lang}] ${text}`;
+    }
+
+    function handleRecognitionResult(event) {
+      const results = event.results;
+      const lastResultIndex = results.length - 1;
+      if (lastResultIndex < 0) return;
+
+      const result = results[lastResultIndex];
+      const transcript = result[0].transcript;
+      const isFinal = result.isFinal;
+
+      if (!isFinal) return; // 只处理最终结果
+
+      const originalText = transcript.trim();
+      if (originalText === '') return;
+
+      let translatedText = null;
+      if (shouldTranslate) {
+        translatedText = mockTranslate(originalText, targetLang);
+      }
+
+      addCaptionItemSafe(originalText, translatedText);
+    }
+
+    function initRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        alert('您的浏览器不支持语音识别，请使用 Chrome、Edge 或 Safari 最新版。');
+        return null;
+      }
+
+      const recog = new SpeechRecognition();
+      recog.continuous = true;
+      recog.interimResults = true;
+      recog.lang = 'zh-CN';
+      recog.maxAlternatives = 1;
+
+      recog.onresult = handleRecognitionResult;
+
+      recog.onerror = (event) => {
+        console.warn('识别错误:', event.error);
+        if (event.error === 'not-allowed') {
+          setStatus('麦克风被拒绝', false);
+          manualStop = true;
+          stopListening();
+        } else if (event.error === 'no-speech') {
+          // 无语音，忽略，让 onend 决定
+        } else if (event.error === 'aborted') {
+          // 主动停止，忽略
+        } else {
+          setStatus(`错误: ${event.error}`, false);
+        }
+      };
+
+      recog.onend = () => {
+        // 如果是手动停止，或者已经不在监听状态，直接待命
+        if (manualStop || !isListening) {
+          isListening = false;
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+          setStatus('待命', false);
+          manualStop = false;
+          return;
+        }
+
+        // 意外结束（例如静音超时）→ 尝试重启一次
+        try {
+          recog.start();
+          setStatus('聆听中...', true);
+        } catch (e) {
+          console.error('重启识别失败:', e);
+          isListening = false;
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+          setStatus('待命', false);
+        }
+      };
+
+      return recog;
+    }
+
+    function startListening() {
+      if (isListening) return;
+      manualStop = false;
+
+      if (!recognition) {
+        recognition = initRecognition();
+        if (!recognition) return;
+      }
+
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      isListening = true;
+      setStatus('聆听中...', true);
+
+      try {
+        recognition.start();
+      } catch (error) {
+        console.error('启动识别失败:', error);
+        if (error.name !== 'InvalidStateError') {
+          setStatus('启动失败', false);
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+          isListening = false;
+        }
+      }
+    }
+
+    function stopListening() {
+      manualStop = true;
+      if (!isListening) {
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        setStatus('待命', false);
+        return;
+      }
+
+      isListening = false;
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      setStatus('待命', false);
+
+      if (recognition) {
+        try {
+          recognition.stop();
+        } catch (e) {}
+      }
+    }
+
+    startBtn.addEventListener('click', startListening);
+    stopBtn.addEventListener('click', stopListening);
+
+    window.addEventListener('beforeunload', () => {
+      if (recognition && isListening) {
+        manualStop = true;
+        try { recognition.stop(); } catch (e) {}
+      }
+    });
+
+  })();
+</script>
+</body>
+</html>
